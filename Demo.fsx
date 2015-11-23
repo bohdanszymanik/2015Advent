@@ -99,3 +99,5 @@ gamma.DistributionFunction(100.) //99.7%
 
 // the likelihood we could experience > 50s duration based upon estimated distribution?
 gamma.ComplementaryDistributionFunction(50.) //6.8%
+
+// is there a correlation of runtime to time of the day the step is started?
