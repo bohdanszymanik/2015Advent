@@ -1,0 +1,6 @@
+source https://nuget.org/api/v2
+
+nuget FsLab
+nuget Accord
+nuget Accord.Statistics
+nuget Accord.MachineLearning
