@@ -56,6 +56,12 @@ let step2 =
 
 step2 |> Array.max // max is 228
 
+// what's the 95th percentile?
+(step2 |> Array.sort).[step2.Length*95/100]
+// and the 99th?
+(step2 |> Array.sort).[step2.Length*99/100]
+
+
 #r @"packages\Accord\lib\net45\Accord.dll"
 #r @"packages\Accord.Math\lib\net45\Accord.Math.dll"
 #r @"packages\Accord.Statistics\lib\net45\Accord.Statistics.dll"
@@ -101,3 +107,61 @@ gamma.DistributionFunction(100.) //99.7%
 gamma.ComplementaryDistributionFunction(50.) //6.8%
 
 // is there a correlation of runtime to time of the day the step is started?
+let s2 =
+    batchSteps
+    |> Frame.filterRowValues(fun row -> row.GetAs<string>("Step#") = "Step 2")
+
+s2?HourOfDay <- 
+    s2 |> Frame.mapRowValues (fun row ->
+                                    let t = row.GetAs<DateTime>("Start")
+                                    t.Hour
+                            )
+let t0 = s2.Rows.[1].GetAs<DateTime> "Start"
+
+s2?HoursFromZero <-
+    s2 |> Frame.mapRowValues (fun row ->
+                                let t = row.GetAs<DateTime>("Start")
+                                let timespan = t - t0
+                                (int)timespan.TotalHours
+                        )
+
+let durationVsHour =
+    s2.Columns.[["HoursFromZero"; "Duration"]]
+    |> Frame.toArray2D
+
+let flatXYArray2D a2d = 
+    [| for x in [0..(Array2D.length1 a2d) - 1] do
+            yield (a2d.[x,0], a2d.[x,1])
+    |]
+
+// visually suggests step2 runs slower in the middle of each day
+flatXYArray2D durationVsHour
+|> Chart.Scatter
+
+// is this because there's more steps running in the hour?
+// let's check across steps of all types
+// use pivot feature in deedle to count number of steps per hour
+let stepsByDayHour =
+    batchSteps.GetColumn<DateTime>("Start")
+    |> Series.mapValues (fun dt -> dt.Day, dt.Hour)
+
+let groupAllByHour = s2.GroupRowsBy<int>"HoursFromZero"
+let groupStep2ByHour = s2.FilterRowsBy("Step#", "Step 2").GroupRowsBy<int>"HoursFromZero"
+
+let meanStep2DurationByHour = groupStep2ByHour?Duration |> Stats.levelMean fst
+let stepsByHour = groupAllByHour?HoursFromZero |> Stats.levelCount fst |> Series.mapValues (fun s ->(float)s)
+
+// load definitely comes on in the middle of each working day
+stepsByHour |> Chart.Line
+
+let stepStats = frame ["MeanStep2Durations" => meanStep2DurationByHour; "TotalStepsEachHour" => stepsByHour]
+
+// but no obvious correlation between the current load and the mean durations (for step 2)
+Seq.zip (stepsByHour |> Series.values) (meanStep2DurationByHour |> Series.values)
+|> Chart.Scatter
+
+// and we could go on asking questions ad infinitum
+// if we had an output variable dependent upon a number of input variables
+// then it would be interesting to explore regression methods
+// and machine learning using Accord
+// but we really need a different data set for that!
