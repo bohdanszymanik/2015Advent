@@ -49,7 +49,6 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Tutorial.fsx" />
     <None Include="Demo.fsx" />
   </ItemGroup>
   <PropertyGroup>
