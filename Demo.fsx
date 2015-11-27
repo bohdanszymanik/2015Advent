@@ -83,7 +83,7 @@ let histUpperEdges = h.Edges.[1..]
 let histCnts = h.Values
 
 let hists = Array.zip histUpperEdges histCnts
-hists |> Chart.Column
+hists |> Chart.Column |> Chart.WithOptions(Options(title="Distribution of measured Step 2 durations"))
 
 // what sort of distribution might be an approximate fit?
 let da = new Analysis.DistributionAnalysis(step2)
@@ -107,58 +107,72 @@ gamma.DistributionFunction(100.) //99.7%
 gamma.ComplementaryDistributionFunction(50.) //6.8%
 
 // is there a correlation of runtime to time of the day the step is started?
-let s2 =
-    batchSteps
-    |> Frame.filterRowValues(fun row -> row.GetAs<string>("Step#") = "Step 2")
-
-s2?HourOfDay <- 
-    s2 |> Frame.mapRowValues (fun row ->
+batchSteps?HourOfDay <- 
+    batchSteps |> Frame.mapRowValues (fun row ->
                                     let t = row.GetAs<DateTime>("Start")
                                     t.Hour
                             )
-let t0 = s2.Rows.[1].GetAs<DateTime> "Start"
 
-s2?HoursFromZero <-
-    s2 |> Frame.mapRowValues (fun row ->
+let t0 = batchSteps.Rows.[1].GetAs<DateTime> "Start"
+
+batchSteps?HoursFromZero <-
+    batchSteps |> Frame.mapRowValues (fun row ->
                                 let t = row.GetAs<DateTime>("Start")
                                 let timespan = t - t0
                                 (int)timespan.TotalHours
                         )
-
-let durationVsHour =
-    s2.Columns.[["HoursFromZero"; "Duration"]]
-    |> Frame.toArray2D
+// let's just do this on a filtered view of the step 2 data since it's the longest
+let step2 =
+    batchSteps
+    |> Frame.filterRowValues(fun row -> row.GetAs<string>("Step#") = "Step 2")
 
 let flatXYArray2D a2d = 
     [| for x in [0..(Array2D.length1 a2d) - 1] do
             yield (a2d.[x,0], a2d.[x,1])
     |]
 
+let durationVsHourFrom0 =
+    step2.Columns.[["HoursFromZero"; "Duration"]]
+    |> Frame.toArray2D
+
+let durationVsHourOfDay =
+    step2.Columns.[["HourOfDay"; "Duration"]]
+    |> Frame.toArray2D
+
 // visually suggests step2 runs slower in the middle of each day
-flatXYArray2D durationVsHour
-|> Chart.Scatter
+flatXYArray2D durationVsHourFrom0
+|> Chart.Scatter |> Chart.WithOptions (Options(title="Mean hourly durations for Step2 versus hour of the day", hAxis=Axis(title="Time from start of data collection in hours")))
+
+// bit clearer if we plot just against the hour of the day that step 2 began
+flatXYArray2D durationVsHourOfDay
+|> Chart.Scatter |> Chart.WithOptions (Options(title="Mean hourly durations for Step2 versus hour of the day", hAxis=Axis(title="Hour of day step 2 began execution")))
 
 // is this because there's more steps running in the hour?
 // let's check across steps of all types
-// use pivot feature in deedle to count number of steps per hour
 let stepsByDayHour =
     batchSteps.GetColumn<DateTime>("Start")
     |> Series.mapValues (fun dt -> dt.Day, dt.Hour)
 
-let groupAllByHour = s2.GroupRowsBy<int>"HoursFromZero"
-let groupStep2ByHour = s2.FilterRowsBy("Step#", "Step 2").GroupRowsBy<int>"HoursFromZero"
+let groupAllByHour = step2.GroupRowsBy<int>"HoursFromZero"
+let groupStep2ByHour = step2.FilterRowsBy("Step#", "Step 2").GroupRowsBy<int>"HoursFromZero"
 
 let meanStep2DurationByHour = groupStep2ByHour?Duration |> Stats.levelMean fst
 let stepsByHour = groupAllByHour?HoursFromZero |> Stats.levelCount fst |> Series.mapValues (fun s ->(float)s)
 
 // load definitely comes on in the middle of each working day
-stepsByHour |> Chart.Line
+stepsByHour 
+|> Chart.Line 
+|> Chart.WithOptions (Options(title="Number of steps of all types executed per hour",
+                                hAxis=Axis(title="Hours from start of data collection")))
 
+// but does concurrent load equate to longer run times?
 let stepStats = frame ["MeanStep2Durations" => meanStep2DurationByHour; "TotalStepsEachHour" => stepsByHour]
 
 // but no obvious correlation between the current load and the mean durations (for step 2)
 Seq.zip (stepsByHour |> Series.values) (meanStep2DurationByHour |> Series.values)
 |> Chart.Scatter
+|> Chart.WithOptions (Options(hAxis=Axis(title="Number of steps executed in the hour"),
+                                vAxis=Axis(title="Mean duration for step 2")))
 
 // and we could go on asking questions ad infinitum
 // if we had an output variable dependent upon a number of input variables
