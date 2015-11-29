@@ -61,7 +61,16 @@ step2 |> Array.max // max is 228
 // and the 99th?
 (step2 |> Array.sort).[step2.Length*99/100]
 
+// how about plotting out a histogram of the distribution of step 2 run times?
+open XPlot.GoogleCharts
+open XPlot.GoogleCharts.Deedle
 
+step2 |> Array.mapi (fun i v -> (string)i, v) 
+|> Chart.Histogram
+|> Chart.WithOptions(Options(title="Distribution of measured Step 2 durations", 
+                            hAxis = Axis(title="Step 2 duration in seconds")))
+
+// how about fitting to a known distribution type
 #r @"packages\Accord\lib\net45\Accord.dll"
 #r @"packages\Accord.Math\lib\net45\Accord.Math.dll"
 #r @"packages\Accord.Statistics\lib\net45\Accord.Statistics.dll"
@@ -70,20 +79,6 @@ step2 |> Array.max // max is 228
 open Accord
 open Accord.Math
 open Accord.Statistics
-
-let h = Visualizations.Histogram()
-h.Compute(step2 , 100) // you get an odd double peak thing going on
-
-h.Bins |> Seq.map(fun b -> b.Value)
-|> List.ofSeq
-
-open XPlot.GoogleCharts
-open XPlot.GoogleCharts.Deedle
-let histUpperEdges = h.Edges.[1..]
-let histCnts = h.Values
-
-let hists = Array.zip histUpperEdges histCnts
-hists |> Chart.Column |> Chart.WithOptions(Options(title="Distribution of measured Step 2 durations"))
 
 // what sort of distribution might be an approximate fit?
 let da = new Analysis.DistributionAnalysis(step2)
@@ -96,9 +91,8 @@ da.GoodnessOfFit.[2] // 3rd place goes to Poisson
 // We can re-sample from within Deedle - refer to http://bluemountaincapital.github.io/Deedle/series.html
 // Or we can generate from within Accord using
 let gamma = Accord.Statistics.Distributions.Univariate.GammaDistribution.Estimate(step2)
-gamma.Generate(1000)
-|> Array.mapi (fun i s -> (string)i, s) 
-|> Chart.Histogram
+let fittedDist = gamma.Generate(1000) |> Array.mapi (fun i s -> (string)i, s) 
+fittedDist |> Chart.Histogram
 
 // what's the probability we're going to be under 100 based upon the estimated distribution?
 gamma.DistributionFunction(100.) //99.7%
@@ -122,7 +116,7 @@ batchSteps?HoursFromZero <-
                                 (int)timespan.TotalHours
                         )
 // let's just do this on a filtered view of the step 2 data since it's the longest
-let step2 =
+let step2Only =
     batchSteps
     |> Frame.filterRowValues(fun row -> row.GetAs<string>("Step#") = "Step 2")
 
@@ -132,11 +126,11 @@ let flatXYArray2D a2d =
     |]
 
 let durationVsHourFrom0 =
-    step2.Columns.[["HoursFromZero"; "Duration"]]
+    step2Only.Columns.[["HoursFromZero"; "Duration"]]
     |> Frame.toArray2D
 
 let durationVsHourOfDay =
-    step2.Columns.[["HourOfDay"; "Duration"]]
+    step2Only.Columns.[["HourOfDay"; "Duration"]]
     |> Frame.toArray2D
 
 // visually suggests step2 runs slower in the middle of each day
@@ -153,8 +147,8 @@ let stepsByDayHour =
     batchSteps.GetColumn<DateTime>("Start")
     |> Series.mapValues (fun dt -> dt.Day, dt.Hour)
 
-let groupAllByHour = step2.GroupRowsBy<int>"HoursFromZero"
-let groupStep2ByHour = step2.FilterRowsBy("Step#", "Step 2").GroupRowsBy<int>"HoursFromZero"
+let groupAllByHour = step2Only.GroupRowsBy<int>"HoursFromZero"
+let groupStep2ByHour = step2Only.FilterRowsBy("Step#", "Step 2").GroupRowsBy<int>"HoursFromZero"
 
 let meanStep2DurationByHour = groupStep2ByHour?Duration |> Stats.levelMean fst
 let stepsByHour = groupAllByHour?HoursFromZero |> Stats.levelCount fst |> Series.mapValues (fun s ->(float)s)
@@ -174,7 +168,8 @@ Seq.zip (stepsByHour |> Series.values) (meanStep2DurationByHour |> Series.values
 |> Chart.WithOptions (Options(hAxis=Axis(title="Number of steps executed in the hour"),
                                 vAxis=Axis(title="Mean duration for step 2")))
 
-// and we could go on asking questions ad infinitum
+// and we could go on asking many more questions
+// if we wanted to extract data to excel - use the SaveCsv method on a frame
 // if we had an output variable dependent upon a number of input variables
 // then it would be interesting to explore regression methods
 // and machine learning using Accord
