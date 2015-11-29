@@ -1,5 +1,5 @@
 # 2015Advent
-Sample code for F# Advent post. 
+Sample code for F# Advent post [Sharpen up your legacy apps performance](http://bohdanszymanik.blogspot.co.nz/2015/11/sharpen-up-your-legacy-apps-performance.html).
 
 `Demo.fsx` holds the code.
 `sampleBatches.txt` holds some sample data. 
